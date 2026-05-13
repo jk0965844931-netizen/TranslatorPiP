@@ -27,6 +27,11 @@ final class ViewController: UIViewController {
         setupGradientBackground()
         setupUI()
         setupOrchestrator()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // PiP setup must happen after the view is in the window hierarchy
         setupPiP()
     }
 
@@ -269,7 +274,8 @@ final class ViewController: UIViewController {
     }
 
     private func setupPiP() {
-        pipManager.setup()
+        // Pass the real view that lives in the window — required for PiP to start
+        pipManager.setup(sourceView: view)
         pipManager.updateLanguage(from: selectedSource.code, to: selectedTarget.code)
         pipManager.onPiPActiveChange = { [weak self] active in
             DispatchQueue.main.async {
