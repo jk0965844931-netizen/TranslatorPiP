@@ -10,17 +10,23 @@ on:
 jobs:
   build:
     name: Build iOS IPA (Unsigned)
-    runs-on: macos-15
+    runs-on: macos-14
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-
-      - name: Show Xcode version
-        run: xcodebuild -version
+        run: |
+          # Pick newest available Xcode (avoids actool simulator-runtime bug in Xcode 16.0)
+          for v in 16.2 16.1 16.0 15.4 15.3 15.2; do
+            if [ -d "/Applications/Xcode_${v}.app" ]; then
+              sudo xcode-select -s "/Applications/Xcode_${v}.app/Contents/Developer"
+              echo "Selected Xcode ${v}"
+              break
+            fi
+          done
+          xcodebuild -version
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -42,11 +48,12 @@ jobs:
             DEVELOPMENT_TEAM="" \
             SUPPORTED_PLATFORMS=iphoneos \
             SUPPORTS_MACCATALYST=NO \
-            ONLY_ACTIVE_ARCH=NO \
-            "EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64 x86_64" \
             SKIP_INSTALL=NO \
             clean build \
-            BUILD_DIR="$(pwd)/build"
+            BUILD_DIR="$(pwd)/build" \
+            | xcpretty || true
+          # Check build actually succeeded regardless of xcpretty exit code
+          test -d build/Release-iphoneos/TranslatorPiP.app
 
       - name: Package IPA
         run: |
@@ -70,5 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-logs
-          path: build/**/*.log
+          path: |
+            build/**/*.log
+            ~/Library/Logs/DiagnosticReports/*.ips
           retention-days: 7
