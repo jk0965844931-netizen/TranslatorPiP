@@ -17,7 +17,7 @@ final class TranslationOrchestrator: NSObject {
 
     private let audioCapture = ScreenAudioCapture()
     private var speechRecognizer: SpeechRecognizer?
-    private let legacyTranslation = TranslationServiceLegacy()
+    private let translationService = TranslationService()
     private(set) var isRunning = false
 
     private var lastTranscribedText = ""
@@ -54,28 +54,16 @@ final class TranslationOrchestrator: NSObject {
         translateDebounceTask?.cancel()
         translateDebounceTask = Task { [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled else { return }
             do {
-                if #available(iOS 17.4, *) {
-                    let service = TranslationService()
-                    service.configure(
-                        from: sourceLanguage.language,
-                        to: targetLanguage.language
-                    )
-                    let result = try await service.translate(text)
-                    await MainActor.run {
-                        self.delegate?.orchestrator(self, didUpdateTranslation: result)
-                    }
-                } else {
-                    let result = try await legacyTranslation.translate(
-                        text,
-                        from: sourceLanguage.code,
-                        to: targetLanguage.code
-                    )
-                    await MainActor.run {
-                        self.delegate?.orchestrator(self, didUpdateTranslation: result)
-                    }
+                let result = try await translationService.translate(
+                    text,
+                    from: sourceLanguage.code,
+                    to: targetLanguage.code
+                )
+                await MainActor.run {
+                    self.delegate?.orchestrator(self, didUpdateTranslation: result)
                 }
             } catch {
                 await MainActor.run {
@@ -168,10 +156,5 @@ enum LanguageOption: String, CaseIterable {
         case .german: return "de"
         case .spanish: return "es"
         }
-    }
-
-    @available(iOS 17.4, *)
-    var language: Locale.Language {
-        return Locale.Language(identifier: code)
     }
 }
