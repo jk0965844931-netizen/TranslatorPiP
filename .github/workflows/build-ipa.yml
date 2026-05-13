@@ -40,6 +40,11 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
+            SUPPORTED_PLATFORMS=iphoneos \
+            SUPPORTS_MACCATALYST=NO \
+            ONLY_ACTIVE_ARCH=NO \
+            "EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64 x86_64" \
+            SKIP_INSTALL=NO \
             clean build \
             BUILD_DIR="$(pwd)/build"
 
