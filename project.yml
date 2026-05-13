@@ -17,6 +17,11 @@ settings:
     DEVELOPMENT_TEAM: ""
     ENABLE_BITCODE: "NO"
     TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTED_PLATFORMS: "iphoneos"
+    SUPPORTS_MACCATALYST: "NO"
+    ONLY_ACTIVE_ARCH: "NO"
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: "arm64 x86_64"
+    SKIP_INSTALL: "NO"
 targets:
   TranslatorPiP:
     type: application
