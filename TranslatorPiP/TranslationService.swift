@@ -1,57 +1,57 @@
-import Translation
+import Foundation
+import NaturalLanguage
 
-@available(iOS 17.4, *)
 final class TranslationService {
-    private var session: TranslationSession?
-    private var configuration: TranslationSession.Configuration?
+    private let session = URLSession.shared
 
-    func configure(from sourceLanguage: Locale.Language, to targetLanguage: Locale.Language) {
-        configuration = TranslationSession.Configuration(
-            source: sourceLanguage,
-            target: targetLanguage
-        )
-    }
+    func translate(_ text: String, from sourceLang: String, to targetLang: String) async throws -> String {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
 
-    func translate(_ text: String) async throws -> String {
-        guard let configuration else {
-            throw TranslationError.notConfigured
+        let trimmed = String(text.prefix(500))
+
+        var components = URLComponents(string: "https://api.mymemory.translated.net/get")!
+        components.queryItems = [
+            URLQueryItem(name: "q", value: trimmed),
+            URLQueryItem(name: "langpair", value: "\(sourceLang)|\(targetLang)")
+        ]
+
+        guard let url = components.url else { throw TranslationError.invalidURL }
+
+        let (data, response) = try await session.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw TranslationError.serverError
         }
-        if session == nil {
-            session = TranslationSession(configuration: configuration)
-        }
-        guard let session else { throw TranslationError.sessionUnavailable }
-        let response = try await session.translate(text)
-        return response.targetText
-    }
 
-    func reset() {
-        session = nil
+        let decoded = try JSONDecoder().decode(MyMemoryResponse.self, from: data)
+
+        guard decoded.responseStatus == 200 else {
+            throw TranslationError.apiError(decoded.responseDetails ?? "Unknown error")
+        }
+
+        return decoded.responseData.translatedText
     }
 
     enum TranslationError: LocalizedError {
-        case notConfigured
-        case sessionUnavailable
+        case invalidURL
+        case serverError
+        case apiError(String)
 
         var errorDescription: String? {
             switch self {
-            case .notConfigured: return "TranslationService ยังไม่ได้ตั้งค่า"
-            case .sessionUnavailable: return "ไม่สามารถสร้าง Translation Session ได้"
+            case .invalidURL: return "URL ไม่ถูกต้อง"
+            case .serverError: return "Server error"
+            case .apiError(let msg): return "Translation API error: \(msg)"
             }
         }
-    }
-}
-
-final class TranslationServiceLegacy {
-    func translate(_ text: String, from: String, to: String) async throws -> String {
-        let urlString = "https://api.mymemory.translated.net/get?q=\(text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&langpair=\(from)|\(to)"
-        guard let url = URL(string: urlString) else { throw URLError(.badURL) }
-        let (data, _) = try await URLSession.shared.data(from: url)
-        let json = try JSONDecoder().decode(MyMemoryResponse.self, from: data)
-        return json.responseData.translatedText
     }
 
     private struct MyMemoryResponse: Decodable {
         let responseData: ResponseData
+        let responseStatus: Int
+        let responseDetails: String?
+
         struct ResponseData: Decodable {
             let translatedText: String
         }
