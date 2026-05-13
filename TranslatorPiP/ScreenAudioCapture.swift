@@ -28,7 +28,7 @@ final class ScreenAudioCapture: NSObject {
         recorder.isMicrophoneEnabled = false
         recorder.startCapture(handler: { [weak self] sampleBuffer, bufferType, error in
             guard let self else { return }
-            if let error {
+            if error != nil {
                 if !self.isCapturing {
                     DispatchQueue.main.async { self.startMicCapture() }
                 }
@@ -121,8 +121,9 @@ final class ScreenAudioCapture: NSObject {
 
 private extension CMSampleBuffer {
     func asPCMBuffer() -> AVAudioPCMBuffer? {
-        guard let desc = CMSampleBufferGetFormatDescription(self),
-              let fmt = AVAudioFormat(cmAudioFormatDescription: desc) else { return nil }
+        guard let desc = CMSampleBufferGetFormatDescription(self) else { return nil }
+        // AVAudioFormat(cmAudioFormatDescription:) is non-failable in iOS 17+ SDK
+        let fmt = AVAudioFormat(cmAudioFormatDescription: desc)
         let count = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
         guard let pcm = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: count) else { return nil }
         pcm.frameLength = count
