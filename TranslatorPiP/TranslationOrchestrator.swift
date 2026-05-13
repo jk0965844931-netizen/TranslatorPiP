@@ -83,7 +83,7 @@ final class TranslationOrchestrator: NSObject {
 }
 
 extension TranslationOrchestrator: ScreenAudioCaptureDelegate {
-    func screenAudioCapture(_ capture: ScreenAudioCapture, didReceiveAudioBuffer buffer: CMSampleBuffer) {
+    func screenAudioCapture(_ capture: ScreenAudioCapture, didReceivePCMBuffer buffer: AVAudioPCMBuffer) {
         speechRecognizer?.appendAudioBuffer(buffer)
     }
 
