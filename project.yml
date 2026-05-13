@@ -56,5 +56,3 @@ targets:
         embed: false
       - framework: Speech.framework
         embed: false
-      - framework: Translation.framework
-        embed: false
