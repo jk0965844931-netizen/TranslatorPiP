@@ -45,7 +45,8 @@ targets:
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
         UIBackgroundModes:
           - audio
-        AVAudioSessionCategory: AVAudioSessionCategoryPlayAndRecord
+          - voip
+        AVAudioSessionCategory: AVAudioSessionCategoryPlayback
     settings:
       base:
         INFOPLIST_FILE: TranslatorPiP/Info.plist
