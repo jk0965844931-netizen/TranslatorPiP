@@ -5,13 +5,16 @@ class AudioSessionManager {
 
     private init() {}
 
+    /// Configure audio session for ReplayKit internal audio capture.
+    /// Use .playback (not .playAndRecord) — ReplayKit manages its own recording session
+    /// internally for .audioApp buffers. Using .playAndRecord would conflict.
     func configure() {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
-                .playAndRecord,
+                .playback,
                 mode: .default,
-                options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers]
+                options: [.mixWithOthers]
             )
             try session.setActive(true)
         } catch {
@@ -21,7 +24,9 @@ class AudioSessionManager {
 
     func deactivate() {
         do {
-            try AVAudioSession.sharedInstance().setActive(false)
+            try AVAudioSession.sharedInstance().setActive(
+                false, options: .notifyOthersOnDeactivation
+            )
         } catch {
             print("AudioSession deactivate error: \(error)")
         }
