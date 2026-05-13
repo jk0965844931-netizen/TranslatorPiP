@@ -34,12 +34,12 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build app (unsigned)
+      - name: Build app (unsigned, LiveContainer-compatible)
         run: |
           xcodebuild \
             -project TranslatorPiP.xcodeproj \
             -scheme TranslatorPiP \
-            -configuration Release \
+            -configuration Debug \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             CODE_SIGN_IDENTITY="" \
@@ -49,11 +49,14 @@ jobs:
             SUPPORTED_PLATFORMS=iphoneos \
             SUPPORTS_MACCATALYST=NO \
             SKIP_INSTALL=NO \
+            SWIFT_OPTIMIZATION_LEVEL="-Onone" \
+            SWIFT_WHOLE_MODULE_OPTIMIZATION=NO \
+            GCC_OPTIMIZATION_LEVEL=0 \
             clean build \
             BUILD_DIR="$(pwd)/build" \
             | xcpretty || true
-          # Check build actually succeeded regardless of xcpretty exit code
-          test -d build/Release-iphoneos/TranslatorPiP.app
+          # Verify build produced the .app bundle
+          test -d build/Debug-iphoneos/TranslatorPiP.app && echo "✅ Build succeeded" || (echo "❌ Build failed" && exit 1)
 
       - name: Package IPA
         run: |
