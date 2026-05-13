@@ -1,0 +1,55 @@
+name: TranslatorPiP
+options:
+  bundleIdPrefix: com.translatorpip
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.translatorpip.app
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_ALLOWED: "NO"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_BITCODE: "NO"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  TranslatorPiP:
+    type: application
+    platform: iOS
+    sources:
+      - TranslatorPiP
+    info:
+      path: TranslatorPiP/Info.plist
+      properties:
+        CFBundleDisplayName: TranslatorPiP
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchStoryboardName: ""
+        NSMicrophoneUsageDescription: "ใช้ไมโครโฟนสำหรับจับเสียงระหว่างการบันทึกหน้าจอ"
+        NSSpeechRecognitionUsageDescription: "ใช้การรู้จำเสียงเพื่อแปลงเสียงเป็นข้อความ"
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
+        UIBackgroundModes:
+          - audio
+        AVAudioSessionCategory: AVAudioSessionCategoryPlayAndRecord
+    settings:
+      base:
+        INFOPLIST_FILE: TranslatorPiP/Info.plist
+    dependencies:
+      - framework: AVKit.framework
+        embed: false
+      - framework: ReplayKit.framework
+        embed: false
+      - framework: Speech.framework
+        embed: false
+      - framework: Translation.framework
+        embed: false
