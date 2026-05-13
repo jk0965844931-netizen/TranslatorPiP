@@ -78,8 +78,8 @@ final class SpeechRecognizer: NSObject {
         }
     }
 
-    func appendAudioBuffer(_ buffer: CMSampleBuffer) {
-        recognitionRequest?.appendAudioSampleBuffer(buffer)
+    func appendAudioBuffer(_ buffer: AVAudioPCMBuffer) {
+        recognitionRequest?.append(buffer)
     }
 
     func stopRecognition() {
