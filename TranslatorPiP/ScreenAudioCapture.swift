@@ -25,7 +25,7 @@ final class ScreenAudioCapture: NSObject {
 
         // Capture internal app audio only — no microphone
         recorder.isMicrophoneEnabled = false
-        recorder.cameraEnabled = false
+        recorder.isCameraEnabled = false
 
         recorder.startCapture(handler: { [weak self] sampleBuffer, bufferType, error in
             guard let self else { return }
