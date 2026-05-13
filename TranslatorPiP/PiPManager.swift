@@ -3,32 +3,39 @@ import UIKit
 
 final class PiPManager: NSObject {
     private var pipController: AVPictureInPictureController?
-    private var contentSource: AVPictureInPictureController.ContentSource?
     private(set) var overlayViewController: PiPOverlayViewController?
     private(set) var isPiPActive = false
 
     var onPiPActiveChange: ((Bool) -> Void)?
 
-    func setup(preferredContentSize: CGSize = CGSize(width: 320, height: 160)) {
-        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+    /// Must be called from viewDidAppear so sourceView is in the live window hierarchy.
+    func setup(sourceView: UIView) {
+        guard AVPictureInPictureController.isPictureInPictureSupported() else {
+            print("PiP: not supported on this device")
+            return
+        }
 
         let overlayVC = PiPOverlayViewController()
-        overlayVC.preferredContentSize = preferredContentSize
+        overlayVC.preferredContentSize = CGSize(width: 300, height: 150)
         self.overlayViewController = overlayVC
 
-        contentSource = AVPictureInPictureController.ContentSource(
-            activeVideoCallSourceView: UIView(),
+        let contentSource = AVPictureInPictureController.ContentSource(
+            activeVideoCallSourceView: sourceView,          // must be in a real window
             contentViewController: overlayVC
         )
 
-        guard let contentSource else { return }
-        pipController = AVPictureInPictureController(contentSource: contentSource)
-        pipController?.delegate = self
-        pipController?.canStartPictureInPictureAutomaticallyFromInline = true
+        let pip = AVPictureInPictureController(contentSource: contentSource)
+        pip.delegate = self
+        pip.canStartPictureInPictureAutomaticallyFromInline = true
+        self.pipController = pip
     }
 
     func startPiP() {
-        guard let pip = pipController, pip.isPictureInPictureActive == false else { return }
+        guard let pip = pipController else {
+            print("PiP: controller not ready — call setup(sourceView:) first from viewDidAppear")
+            return
+        }
+        guard !pip.isPictureInPictureActive else { return }
         pip.startPictureInPicture()
     }
 
@@ -66,5 +73,9 @@ extension PiPManager: AVPictureInPictureControllerDelegate {
         failedToStartPictureInPictureWithError error: Error
     ) {
         print("PiP failed: \(error.localizedDescription)")
+    }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        print("PiP: will start")
     }
 }
