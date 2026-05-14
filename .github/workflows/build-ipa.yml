@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed to create releases and upload assets
+  contents: write
 
 jobs:
   build:
@@ -69,6 +69,27 @@ jobs:
             exit 1
           fi
 
+      - name: Verify and ad-hoc sign extension
+        run: |
+          set -euo pipefail
+          APPEX="build/Debug-iphoneos/TranslatorPiP.app/PlugIns/TranslatorPiPBroadcast.appex"
+          if [ -d "$APPEX" ]; then
+            echo "✅ Broadcast extension found in PlugIns:"
+            ls -la "$APPEX"
+            # Ad-hoc sign the extension so SideStore/AltStore can re-sign it properly.
+            # Without any signature, some sideloading tools refuse to process extensions.
+            codesign --force --sign - "$APPEX"
+            echo "✅ Extension ad-hoc signed"
+          else
+            echo "❌ Extension missing from PlugIns — embedding may have failed"
+            ls -la build/Debug-iphoneos/TranslatorPiP.app/ || true
+            exit 1
+          fi
+
+          # Also ad-hoc sign the main app after signing the extension
+          codesign --force --sign - "build/Debug-iphoneos/TranslatorPiP.app"
+          echo "✅ Main app ad-hoc signed"
+
       - name: Package IPA
         run: |
           set -euo pipefail
@@ -76,51 +97,54 @@ jobs:
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr TranslatorPiP_unsigned.ipa Payload
+
           IPA_SIZE=$(du -sh TranslatorPiP_unsigned.ipa | cut -f1)
           IPA_BYTES=$(stat -f%z TranslatorPiP_unsigned.ipa)
           echo "✅ IPA size: $IPA_SIZE ($IPA_BYTES bytes)"
+
+          # Verify extension is in the IPA
+          echo "=== IPA contents (extension check) ==="
+          unzip -l TranslatorPiP_unsigned.ipa | grep -E "appex|PlugIns" || echo "(none found)"
+
           if [ "$IPA_BYTES" -lt 50000 ]; then
-            echo "❌ IPA suspiciously small — packaging failed"
+            echo "❌ IPA suspiciously small"
             exit 1
           fi
 
-      - name: Publish GitHub Release (public download — no login needed)
+      - name: Publish GitHub Release (public download)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="latest-build"
           REPO="${{ github.repository }}"
-          SHA="${{ github.sha }}"
-          SHORT_SHA="${SHA:0:7}"
           DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
 
-          # Delete old release + tag if exists (keep only the latest build)
           gh release delete "$TAG" --yes --repo "$REPO" 2>/dev/null || true
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
 
-          # Create new release
           gh release create "$TAG" \
             --repo "$REPO" \
             --title "TranslatorPiP Unsigned IPA (${DATE})" \
-            --notes "**Unsigned IPA for LiveContainer / sideloading**
+            --notes "**Unsigned IPA — ad-hoc signed for SideStore / AltStore / LiveContainer**
 
           Build: \`${SHORT_SHA}\` — ${DATE}
 
-          **วิธีติดตั้ง:**
-          1. ดาวน์โหลด \`TranslatorPiP_unsigned.ipa\` ด้านล่าง
-          2. เปิด LiveContainer → กด + → เลือกไฟล์ IPA
+          **วิธีติดตั้ง (SideStore):**
+          1. ดาวน์โหลด \`TranslatorPiP_unsigned.ipa\`
+          2. เพิ่มใน SideStore → ติดตั้ง
+          3. ถ้าติดตั้งแล้ว **ต้อง restart เครื่อง 1 ครั้ง** เพื่อให้ iOS ลงทะเบียน Broadcast Extension
 
           **วิธีใช้จับเสียงภายในเครื่อง:**
-          1. กด \"เริ่มแปลเสียง\" ในแอพ
-          2. เปิด Control Center → กดค้าง Screen Record
-          3. เลือก \"TranslatorPiP\" → Start Broadcast
-          4. กด \"เปิด PiP\" → หน้าต่างแปลจะลอยทับแอพอื่น" \
+          1. เปิดแอพ → กด **เริ่มแปลเสียง**
+          2. กดปุ่ม **📡 เปิดรับเสียงภายในเครื่อง** → เลือก TranslatorPiP จาก picker
+          3. กด **เปิด PiP** แล้วสลับไปแอพอื่น" \
             --prerelease \
             TranslatorPiP_unsigned.ipa
 
-          echo ""
-          echo "✅ Public download URL:"
+          echo "✅ Public URL:"
           echo "https://github.com/${REPO}/releases/download/${TAG}/TranslatorPiP_unsigned.ipa"
 
       - name: Upload build log on failure
