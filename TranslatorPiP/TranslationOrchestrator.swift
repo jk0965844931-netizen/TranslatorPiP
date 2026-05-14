@@ -4,7 +4,7 @@ import Speech
 protocol TranslationOrchestratorDelegate: AnyObject {
     func orchestrator(_ orchestrator: TranslationOrchestrator, didUpdateOriginal text: String)
     func orchestrator(_ orchestrator: TranslationOrchestrator, didUpdateTranslation text: String)
-    func orchestratorDidStart(_ orchestrator: TranslationOrchestrator)
+    func orchestratorDidStart(_ orchestrator: TranslationOrchestrator, strategy: ScreenAudioCapture.Strategy)
     func orchestratorDidStop(_ orchestrator: TranslationOrchestrator)
     func orchestrator(_ orchestrator: TranslationOrchestrator, didFailWithError error: Error)
 }
@@ -14,6 +14,7 @@ final class TranslationOrchestrator: NSObject {
 
     var sourceLanguage: LanguageOption = .english
     var targetLanguage: LanguageOption = .thai
+    var activeStrategy: ScreenAudioCapture.Strategy { audioCapture.activeStrategy }
 
     private let audioCapture = ScreenAudioCapture()
     private var speechRecognizer: SpeechRecognizer?
@@ -90,7 +91,7 @@ extension TranslationOrchestrator: ScreenAudioCaptureDelegate {
     func screenAudioCaptureDidStart(_ capture: ScreenAudioCapture) {
         isRunning = true
         scheduleRecognitionRestart()
-        delegate?.orchestratorDidStart(self)
+        delegate?.orchestratorDidStart(self, strategy: capture.activeStrategy)
     }
 
     func screenAudioCapture(_ capture: ScreenAudioCapture, didFailWithError error: Error) {
