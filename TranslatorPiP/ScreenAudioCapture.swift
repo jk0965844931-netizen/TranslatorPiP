@@ -9,17 +9,17 @@ protocol ScreenAudioCaptureDelegate: AnyObject {
     func screenAudioCaptureDidStop(_ capture: ScreenAudioCapture)
 }
 
-/// Captures internal app audio using one of two strategies:
+/// Captures internal app audio using one of two strategies chosen at runtime:
 ///
-/// **Strategy A — RPScreenRecorder (SideStore / AltStore)**
-///   The app runs in its own process, so iOS grants screen-recording
-///   permission normally. `startCapture` is tried first.
+/// **Strategy A — RPScreenRecorder (SideStore / AltStore / direct installs)**
+///   App runs in its own process so iOS grants screen-recording permission
+///   normally via a system dialog.  Tried first; only falls back on hard error.
 ///
 /// **Strategy B — UDP listener (LiveContainer)**
-///   LiveContainer runs the app inside its own process, so RPScreenRecorder
-///   is blocked. Instead the Broadcast Upload Extension (TranslatorPiPBroadcast)
-///   captures audio and streams it to the main app on localhost:14731.
-///   This mode activates automatically if Strategy A fails within 3 s.
+///   LiveContainer hosts the app inside its own process, blocking
+///   RPScreenRecorder.  The completionHandler fires with an error immediately,
+///   so we switch to listening on localhost:14731 for packets from the
+///   TranslatorPiPBroadcast extension.
 final class ScreenAudioCapture: NSObject {
 
     weak var delegate: ScreenAudioCaptureDelegate?
@@ -28,13 +28,11 @@ final class ScreenAudioCapture: NSObject {
 
     enum Strategy { case none, replayKit, broadcastExtension }
 
-    // ReplayKit
     private let recorder = RPScreenRecorder.shared()
 
-    // UDP fallback
+    // UDP (Strategy B)
     private var socketFd: Int32 = -1
     private let udpPort: UInt16 = 14731
-    private var fallbackTimer: DispatchWorkItem?
 
     // MARK: — Public API
 
@@ -45,23 +43,20 @@ final class ScreenAudioCapture: NSObject {
 
     func stopCapture() {
         guard isCapturing else { return }
-        fallbackTimer?.cancel()
-        fallbackTimer = nil
         isCapturing = false
         activeStrategy = .none
 
         recorder.stopCapture { _ in }
 
         if socketFd >= 0 { Darwin.close(socketFd); socketFd = -1 }
-
         DispatchQueue.main.async { self.delegate?.screenAudioCaptureDidStop(self) }
     }
 
-    // MARK: — Strategy A: RPScreenRecorder
+    // MARK: — Strategy A: RPScreenRecorder (SideStore)
 
     private func tryReplayKit() {
-        guard RPScreenRecorder.shared().isAvailable else {
-            // RPScreenRecorder not available at all — go straight to UDP
+        guard recorder.isAvailable else {
+            // ReplayKit not available at all on this device — go straight to UDP
             startUDPListener()
             return
         }
@@ -69,38 +64,29 @@ final class ScreenAudioCapture: NSObject {
         recorder.isMicrophoneEnabled = false
         recorder.isCameraEnabled = false
 
-        // Schedule fallback: if startCapture callback isn't called within 3 s,
-        // RPScreenRecorder is probably blocked (LiveContainer) — switch to UDP.
-        let item = DispatchWorkItem { [weak self] in
-            guard let self, !self.isCapturing else { return }
-            self.recorder.stopCapture { _ in }
-            self.startUDPListener()
-        }
-        fallbackTimer = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: item)
-
         recorder.startCapture(
             handler: { [weak self] sampleBuffer, bufferType, error in
                 guard let self else { return }
-                if let error {
-                    // RPScreenRecorder rejected — switch to UDP
-                    self.fallbackTimer?.cancel()
-                    if !self.isCapturing { self.startUDPListener() }
-                    return
-                }
+
+                // Silently ignore errors in the sample handler —
+                // the completionHandler is the authoritative failure signal.
+                if error != nil { return }
+
                 guard bufferType == .audioApp,
                       let pcm = sampleBuffer.asPCMBuffer() else { return }
                 self.delegate?.screenAudioCapture(self, didReceivePCMBuffer: pcm)
             },
             completionHandler: { [weak self] error in
                 guard let self else { return }
-                self.fallbackTimer?.cancel()
+
                 if let error {
-                    // Completion called with error — switch to UDP
-                    if !self.isCapturing { self.startUDPListener() }
+                    // RPScreenRecorder failed (LiveContainer or user denied).
+                    // Fall back to UDP / Broadcast Extension.
+                    self.startUDPListener()
                     return
                 }
-                // RPScreenRecorder started successfully
+
+                // RPScreenRecorder started successfully (SideStore / AltStore).
                 self.isCapturing = true
                 self.activeStrategy = .replayKit
                 DispatchQueue.main.async {
@@ -114,10 +100,11 @@ final class ScreenAudioCapture: NSObject {
 
     private func startUDPListener() {
         let fd = socket(AF_INET, SOCK_DGRAM, 0)
-        guard fd >= 0 else { fail("socket() failed: \(errno)"); return }
+        guard fd >= 0 else { fail("socket() ล้มเหลว: \(errno)"); return }
 
         var reuse: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse,
+                   socklen_t(MemoryLayout<Int32>.size))
 
         var addr = sockaddr_in()
         addr.sin_len    = UInt8(MemoryLayout<sockaddr_in>.size)
@@ -132,7 +119,7 @@ final class ScreenAudioCapture: NSObject {
         }
         guard bound == 0 else {
             Darwin.close(fd)
-            fail("UDP bind failed on port \(udpPort): \(errno)")
+            fail("UDP bind ล้มเหลวบนพอร์ต \(udpPort): \(errno)")
             return
         }
 
@@ -143,7 +130,7 @@ final class ScreenAudioCapture: NSObject {
 
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             var buf = [UInt8](repeating: 0, count: 65536)
-            while let self = self, self.isCapturing {
+            while let self, self.isCapturing {
                 let n = recv(fd, &buf, buf.count, 0)
                 guard n > 12 else { continue }
                 self.processPacket(Data(buf[0..<n]))
@@ -169,7 +156,8 @@ final class ScreenAudioCapture: NSObject {
 
         if let dst = pcm.floatChannelData {
             data.withUnsafeBytes { raw in
-                let src = raw.baseAddress!.advanced(by: 12).bindMemory(to: Float.self, capacity: Int(fc * ch))
+                let src = raw.baseAddress!.advanced(by: 12)
+                    .bindMemory(to: Float.self, capacity: Int(fc * ch))
                 for c in 0..<Int(ch) {
                     for f in 0..<Int(fc) { dst[c][f] = src[c * Int(fc) + f] }
                 }
@@ -185,14 +173,15 @@ final class ScreenAudioCapture: NSObject {
     }
 }
 
-// MARK: — CMSampleBuffer → AVAudioPCMBuffer (used by ReplayKit path)
+// MARK: — CMSampleBuffer → AVAudioPCMBuffer (ReplayKit path)
 
 private extension CMSampleBuffer {
     func asPCMBuffer() -> AVAudioPCMBuffer? {
         guard let desc = CMSampleBufferGetFormatDescription(self) else { return nil }
         let fmt = AVAudioFormat(cmAudioFormatDescription: desc)
         let count = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
-        guard count > 0, let pcm = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: count) else { return nil }
+        guard count > 0,
+              let pcm = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: count) else { return nil }
         pcm.frameLength = count
         guard CMSampleBufferCopyPCMDataIntoAudioBufferList(
             self, at: 0, frameCount: Int32(count), into: pcm.mutableAudioBufferList
