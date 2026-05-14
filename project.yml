@@ -7,7 +7,6 @@ options:
   generateEmptyDirectories: true
 settings:
   base:
-    PRODUCT_BUNDLE_IDENTIFIER: com.translatorpip.app
     SWIFT_VERSION: "5.9"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     CODE_SIGN_STYLE: Manual
@@ -34,8 +33,9 @@ targets:
         CFBundleDisplayName: TranslatorPiP
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.translatorpip.app
         UILaunchStoryboardName: ""
-        NSMicrophoneUsageDescription: "ใช้ไมโครโฟนสำหรับจับเสียงระหว่างการบันทึกหน้าจอ"
+        NSMicrophoneUsageDescription: "ใช้สำหรับ Screen Recording Broadcast"
         NSSpeechRecognitionUsageDescription: "ใช้การรู้จำเสียงเพื่อแปลงเสียงเป็นข้อความ"
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -46,9 +46,9 @@ targets:
         UIBackgroundModes:
           - audio
           - voip
-        AVAudioSessionCategory: AVAudioSessionCategoryPlayback
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.translatorpip.app
         INFOPLIST_FILE: TranslatorPiP/Info.plist
     dependencies:
       - framework: AVKit.framework
@@ -56,4 +56,36 @@ targets:
       - framework: ReplayKit.framework
         embed: false
       - framework: Speech.framework
+        embed: false
+      - target: TranslatorPiPBroadcast
+        embed: true
+        link: false
+
+  TranslatorPiPBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - TranslatorPiPBroadcast
+    info:
+      path: TranslatorPiPBroadcast/Info.plist
+      properties:
+        CFBundleDisplayName: TranslatorPiP
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: BroadcastSampleHandler
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.translatorpip.app.broadcast
+        INFOPLIST_FILE: TranslatorPiPBroadcast/Info.plist
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_ALLOWED: "NO"
+        DEVELOPMENT_TEAM: ""
+    dependencies:
+      - framework: ReplayKit.framework
         embed: false
