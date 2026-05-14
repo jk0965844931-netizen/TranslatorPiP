@@ -389,12 +389,27 @@ extension ViewController: TranslationOrchestratorDelegate {
         pipManager.update(original: orchestrator.sourceLanguage.rawValue, translated: text)
     }
 
-    func orchestratorDidStart(_ orchestrator: TranslationOrchestrator) {
+    func orchestratorDidStart(_ orchestrator: TranslationOrchestrator, strategy: ScreenAudioCapture.Strategy) {
         isRunning = true
         updateStartButton(running: true)
-        statusLabel.text = "⬤  รอ Broadcast... เปิด Control Center แล้วเลือก \"TranslatorPiP\""
-        statusLabel.textColor = UIColor(red: 1.0, green: 0.85, blue: 0.4, alpha: 1)
         pipManager.setListening(true)
+
+        switch strategy {
+        case .replayKit:
+            // SideStore / AltStore — RPScreenRecorder is working
+            statusLabel.text = "⬤  กำลังจับเสียงหน้าจอ..."
+            statusLabel.textColor = UIColor(red: 0.3, green: 1.0, blue: 0.5, alpha: 1)
+            pipManager.startPiP()
+
+        case .broadcastExtension:
+            // LiveContainer — waiting for user to start Broadcast from Control Center
+            statusLabel.text = "⬤  รอ Broadcast... เปิด Control Center → กดค้าง Screen Record → เลือก \"TranslatorPiP\""
+            statusLabel.textColor = UIColor(red: 1.0, green: 0.85, blue: 0.4, alpha: 1)
+
+        case .none:
+            statusLabel.text = "⬤  เริ่มต้นระบบเสียง..."
+            statusLabel.textColor = UIColor(red: 0.4, green: 0.8, blue: 1.0, alpha: 1)
+        }
     }
 
     func orchestratorDidStop(_ orchestrator: TranslationOrchestrator) {
