@@ -1,5 +1,4 @@
 import AVFoundation
-import ReplayKit
 import Darwin
 
 protocol ScreenAudioCaptureDelegate: AnyObject {
@@ -9,17 +8,14 @@ protocol ScreenAudioCaptureDelegate: AnyObject {
     func screenAudioCaptureDidStop(_ capture: ScreenAudioCapture)
 }
 
-/// Captures internal app audio using one of two strategies chosen at runtime:
+/// Receives internal-device audio sent by the TranslatorPiPBroadcast extension
+/// over a local UDP socket (port 14731).
 ///
-/// **Strategy A — RPScreenRecorder (SideStore / AltStore / direct installs)**
-///   App runs in its own process so iOS grants screen-recording permission
-///   normally via a system dialog.  Tried first; only falls back on hard error.
-///
-/// **Strategy B — UDP listener (LiveContainer)**
-///   LiveContainer hosts the app inside its own process, blocking
-///   RPScreenRecorder.  The completionHandler fires with an error immediately,
-///   so we switch to listening on localhost:14731 for packets from the
-///   TranslatorPiPBroadcast extension.
+/// Why UDP (not RPScreenRecorder directly):
+///   RPScreenRecorder.startCapture with .audioApp only captures the CURRENT
+///   app's own audio output.  To capture audio from YouTube, Spotify, etc.,
+///   a Broadcast Upload Extension is required — iOS routes all app audio to
+///   the extension's RPBroadcastSampleHandler, which we relay over UDP.
 final class ScreenAudioCapture: NSObject {
 
     weak var delegate: ScreenAudioCaptureDelegate?
@@ -28,9 +24,6 @@ final class ScreenAudioCapture: NSObject {
 
     enum Strategy { case none, replayKit, broadcastExtension }
 
-    private let recorder = RPScreenRecorder.shared()
-
-    // UDP (Strategy B)
     private var socketFd: Int32 = -1
     private let udpPort: UInt16 = 14731
 
@@ -38,69 +31,22 @@ final class ScreenAudioCapture: NSObject {
 
     func startCapture() {
         guard !isCapturing else { return }
-        tryReplayKit()
+        startUDPListener()
     }
 
     func stopCapture() {
         guard isCapturing else { return }
         isCapturing = false
         activeStrategy = .none
-
-        recorder.stopCapture { _ in }
-
         if socketFd >= 0 { Darwin.close(socketFd); socketFd = -1 }
         DispatchQueue.main.async { self.delegate?.screenAudioCaptureDidStop(self) }
     }
 
-    // MARK: — Strategy A: RPScreenRecorder (SideStore)
-
-    private func tryReplayKit() {
-        guard recorder.isAvailable else {
-            // ReplayKit not available at all on this device — go straight to UDP
-            startUDPListener()
-            return
-        }
-
-        recorder.isMicrophoneEnabled = false
-        recorder.isCameraEnabled = false
-
-        recorder.startCapture(
-            handler: { [weak self] sampleBuffer, bufferType, error in
-                guard let self else { return }
-
-                // Silently ignore errors in the sample handler —
-                // the completionHandler is the authoritative failure signal.
-                if error != nil { return }
-
-                guard bufferType == .audioApp,
-                      let pcm = sampleBuffer.asPCMBuffer() else { return }
-                self.delegate?.screenAudioCapture(self, didReceivePCMBuffer: pcm)
-            },
-            completionHandler: { [weak self] error in
-                guard let self else { return }
-
-                if let error {
-                    // RPScreenRecorder failed (LiveContainer or user denied).
-                    // Fall back to UDP / Broadcast Extension.
-                    self.startUDPListener()
-                    return
-                }
-
-                // RPScreenRecorder started successfully (SideStore / AltStore).
-                self.isCapturing = true
-                self.activeStrategy = .replayKit
-                DispatchQueue.main.async {
-                    self.delegate?.screenAudioCaptureDidStart(self)
-                }
-            }
-        )
-    }
-
-    // MARK: — Strategy B: UDP listener (Broadcast Extension → main app)
+    // MARK: — UDP listener (receives audio from Broadcast Extension)
 
     private func startUDPListener() {
         let fd = socket(AF_INET, SOCK_DGRAM, 0)
-        guard fd >= 0 else { fail("socket() ล้มเหลว: \(errno)"); return }
+        guard fd >= 0 else { fail("socket() ล้มเหลว: errno \(errno)"); return }
 
         var reuse: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse,
@@ -119,7 +65,7 @@ final class ScreenAudioCapture: NSObject {
         }
         guard bound == 0 else {
             Darwin.close(fd)
-            fail("UDP bind ล้มเหลวบนพอร์ต \(udpPort): \(errno)")
+            fail("UDP bind ล้มเหลวบนพอร์ต \(udpPort): errno \(errno)")
             return
         }
 
@@ -138,14 +84,15 @@ final class ScreenAudioCapture: NSObject {
         }
     }
 
-    // MARK: — UDP packet decoding
+    // MARK: — Packet decoding (header: sampleRate UInt32 | channels UInt32 | frameCount UInt32)
 
     private func processPacket(_ data: Data) {
         guard data.count >= 12 else { return }
         let sr = data.withUnsafeBytes { UInt32(bigEndian: $0.loadUnaligned(fromByteOffset: 0, as: UInt32.self)) }
         let ch = data.withUnsafeBytes { UInt32(bigEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }
         let fc = data.withUnsafeBytes { UInt32(bigEndian: $0.loadUnaligned(fromByteOffset: 8, as: UInt32.self)) }
-        guard sr > 0, ch > 0, fc > 0, data.count >= 12 + Int(fc * ch * 4) else { return }
+        let expectedBytes = 12 + Int(fc * ch * 4)
+        guard sr > 0, ch > 0, fc > 0, data.count >= expectedBytes else { return }
 
         guard let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                       sampleRate: Double(sr),
@@ -170,22 +117,5 @@ final class ScreenAudioCapture: NSObject {
         let err = NSError(domain: "ScreenAudioCapture", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: msg])
         DispatchQueue.main.async { self.delegate?.screenAudioCapture(self, didFailWithError: err) }
-    }
-}
-
-// MARK: — CMSampleBuffer → AVAudioPCMBuffer (ReplayKit path)
-
-private extension CMSampleBuffer {
-    func asPCMBuffer() -> AVAudioPCMBuffer? {
-        guard let desc = CMSampleBufferGetFormatDescription(self) else { return nil }
-        let fmt = AVAudioFormat(cmAudioFormatDescription: desc)
-        let count = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
-        guard count > 0,
-              let pcm = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: count) else { return nil }
-        pcm.frameLength = count
-        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(
-            self, at: 0, frameCount: Int32(count), into: pcm.mutableAudioBufferList
-        ) == noErr else { return nil }
-        return pcm
     }
 }
