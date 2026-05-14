@@ -7,6 +7,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write   # needed to create releases and upload assets
+
 jobs:
   build:
     name: Build iOS IPA (Unsigned)
@@ -56,7 +59,6 @@ jobs:
             BUILD_DIR="$(pwd)/build" \
             2>&1 | tee build_output.log
 
-          # Verify the actual executable binary exists (not just the empty .app folder)
           BINARY="build/Debug-iphoneos/TranslatorPiP.app/TranslatorPiP"
           if [ -f "$BINARY" ]; then
             SIZE=$(du -sh "$BINARY" | cut -f1)
@@ -71,26 +73,55 @@ jobs:
         run: |
           set -euo pipefail
           APP_PATH="build/Debug-iphoneos/TranslatorPiP.app"
-          echo "Packaging: $APP_PATH"
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr TranslatorPiP_unsigned.ipa Payload
           IPA_SIZE=$(du -sh TranslatorPiP_unsigned.ipa | cut -f1)
-          echo "✅ IPA size: $IPA_SIZE"
-          # Sanity check — must be > 50KB (Debug builds with -Onone are small but valid)
           IPA_BYTES=$(stat -f%z TranslatorPiP_unsigned.ipa)
+          echo "✅ IPA size: $IPA_SIZE ($IPA_BYTES bytes)"
           if [ "$IPA_BYTES" -lt 50000 ]; then
-            echo "❌ IPA is suspiciously small ($IPA_BYTES bytes) — packaging may have failed"
+            echo "❌ IPA suspiciously small — packaging failed"
             exit 1
           fi
-          echo "✅ IPA packaging verified ($IPA_BYTES bytes)"
 
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: TranslatorPiP-unsigned-ipa
-          path: TranslatorPiP_unsigned.ipa
-          retention-days: 30
+      - name: Publish GitHub Release (public download — no login needed)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="latest-build"
+          REPO="${{ github.repository }}"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          # Delete old release + tag if exists (keep only the latest build)
+          gh release delete "$TAG" --yes --repo "$REPO" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
+          # Create new release
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "TranslatorPiP Unsigned IPA (${DATE})" \
+            --notes "**Unsigned IPA for LiveContainer / sideloading**
+
+          Build: \`${SHORT_SHA}\` — ${DATE}
+
+          **วิธีติดตั้ง:**
+          1. ดาวน์โหลด \`TranslatorPiP_unsigned.ipa\` ด้านล่าง
+          2. เปิด LiveContainer → กด + → เลือกไฟล์ IPA
+
+          **วิธีใช้จับเสียงภายในเครื่อง:**
+          1. กด \"เริ่มแปลเสียง\" ในแอพ
+          2. เปิด Control Center → กดค้าง Screen Record
+          3. เลือก \"TranslatorPiP\" → Start Broadcast
+          4. กด \"เปิด PiP\" → หน้าต่างแปลจะลอยทับแอพอื่น" \
+            --prerelease \
+            TranslatorPiP_unsigned.ipa
+
+          echo ""
+          echo "✅ Public download URL:"
+          echo "https://github.com/${REPO}/releases/download/${TAG}/TranslatorPiP_unsigned.ipa"
 
       - name: Upload build log on failure
         if: failure()
