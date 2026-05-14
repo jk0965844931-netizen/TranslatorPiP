@@ -13,6 +13,7 @@ final class ViewController: UIViewController {
     private let translatedTextView = UITextView()
     private let startStopButton = UIButton(type: .system)
     private let pipButton = UIButton(type: .system)
+    private let broadcastHintCard = UIView()
     private let langStackView = UIStackView()
     private let sourcePicker = UIButton(type: .system)
     private let targetPicker = UIButton(type: .system)
@@ -31,7 +32,6 @@ final class ViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // PiP setup must happen after the view is in the window hierarchy
         setupPiP()
     }
 
@@ -54,18 +54,67 @@ final class ViewController: UIViewController {
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        subtitleLabel.text = "แปลเสียงหน้าจอแบบ Real-time"
+        subtitleLabel.text = "แปลเสียงภายในเครื่องแบบ Real-time"
         subtitleLabel.font = .systemFont(ofSize: 14, weight: .regular)
         subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.55)
         subtitleLabel.textAlignment = .center
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        setupBroadcastHintCard()
         setupLanguagePicker()
         setupStatusCard()
         setupTextViews()
         setupButtons()
         layoutAll()
     }
+
+    // MARK: — Broadcast hint card
+
+    private func setupBroadcastHintCard() {
+        broadcastHintCard.backgroundColor = UIColor(red: 0.15, green: 0.10, blue: 0.05, alpha: 1)
+        broadcastHintCard.layer.cornerRadius = 12
+        broadcastHintCard.layer.borderColor = UIColor(red: 1.0, green: 0.75, blue: 0.3, alpha: 0.4).cgColor
+        broadcastHintCard.layer.borderWidth = 0.8
+        broadcastHintCard.translatesAutoresizingMaskIntoConstraints = false
+
+        let icon = UILabel()
+        icon.text = "📡"
+        icon.font = .systemFont(ofSize: 20)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = UILabel()
+        title.text = "วิธีเปิดรับเสียงภายในเครื่อง"
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        title.textColor = UIColor(red: 1.0, green: 0.85, blue: 0.5, alpha: 1)
+        title.translatesAutoresizingMaskIntoConstraints = false
+
+        let steps = UILabel()
+        steps.text = "1. กด \"เริ่มแปลเสียง\" ด้านล่าง\n2. เปิด Control Center (ปัดลงจากขวาบน)\n3. กดค้างที่ปุ่ม Screen Record (วงกลม)\n4. เลือก \"TranslatorPiP\" แล้วกด Start Broadcast\n5. กลับมาแอพนี้ → กด \"เปิด PiP\" → ย่อลอยทับแอพอื่น"
+        steps.font = .systemFont(ofSize: 12, weight: .regular)
+        steps.textColor = UIColor.white.withAlphaComponent(0.75)
+        steps.numberOfLines = 0
+        steps.translatesAutoresizingMaskIntoConstraints = false
+
+        broadcastHintCard.addSubview(icon)
+        broadcastHintCard.addSubview(title)
+        broadcastHintCard.addSubview(steps)
+
+        NSLayoutConstraint.activate([
+            icon.topAnchor.constraint(equalTo: broadcastHintCard.topAnchor, constant: 12),
+            icon.leadingAnchor.constraint(equalTo: broadcastHintCard.leadingAnchor, constant: 14),
+
+            title.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
+            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+            title.trailingAnchor.constraint(equalTo: broadcastHintCard.trailingAnchor, constant: -14),
+
+            steps.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 8),
+            steps.leadingAnchor.constraint(equalTo: broadcastHintCard.leadingAnchor, constant: 14),
+            steps.trailingAnchor.constraint(equalTo: broadcastHintCard.trailingAnchor, constant: -14),
+            steps.bottomAnchor.constraint(equalTo: broadcastHintCard.bottomAnchor, constant: -12),
+        ])
+    }
+
+    // MARK: — Language picker
 
     private func setupLanguagePicker() {
         langStackView.axis = .horizontal
@@ -138,11 +187,11 @@ final class ViewController: UIViewController {
         UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5) {
             self.swapButton.transform = CGAffineTransform(rotationAngle: .pi)
         } completion: { _ in
-            UIView.animate(withDuration: 0.3) {
-                self.swapButton.transform = .identity
-            }
+            UIView.animate(withDuration: 0.3) { self.swapButton.transform = .identity }
         }
     }
+
+    // MARK: — Status card
 
     private func setupStatusCard() {
         statusCard.backgroundColor = UIColor.white.withAlphaComponent(0.06)
@@ -151,13 +200,16 @@ final class ViewController: UIViewController {
         statusCard.layer.borderWidth = 0.5
         statusCard.translatesAutoresizingMaskIntoConstraints = false
 
-        statusLabel.text = "⬤  พร้อมใช้งาน"
+        statusLabel.text = "⬤  พร้อมใช้งาน — รอ Broadcast จาก Control Center"
         statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
         statusLabel.textColor = UIColor(red: 0.4, green: 0.8, blue: 1.0, alpha: 1)
         statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 0
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusCard.addSubview(statusLabel)
     }
+
+    // MARK: — Text views
 
     private func setupTextViews() {
         [originalTextView, translatedTextView].forEach { tv in
@@ -177,6 +229,8 @@ final class ViewController: UIViewController {
         translatedTextView.text = "คำแปลจะปรากฎที่นี่..."
     }
 
+    // MARK: — Buttons
+
     private func setupButtons() {
         var startConfig = UIButton.Configuration.filled()
         startConfig.title = "เริ่มแปลเสียง"
@@ -187,9 +241,7 @@ final class ViewController: UIViewController {
         startConfig.cornerStyle = .capsule
         startConfig.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 32, bottom: 16, trailing: 32)
         startConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
-            var a = attrs
-            a.font = UIFont.systemFont(ofSize: 17, weight: .bold)
-            return a
+            var a = attrs; a.font = UIFont.systemFont(ofSize: 17, weight: .bold); return a
         }
         startStopButton.configuration = startConfig
         startStopButton.translatesAutoresizingMaskIntoConstraints = false
@@ -207,6 +259,8 @@ final class ViewController: UIViewController {
         pipButton.addTarget(self, action: #selector(togglePiP), for: .touchUpInside)
     }
 
+    // MARK: — Layout
+
     private func layoutAll() {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -215,6 +269,7 @@ final class ViewController: UIViewController {
         let contentStack = UIStackView(arrangedSubviews: [
             titleLabel,
             subtitleLabel,
+            broadcastHintCard,
             langStackView,
             statusCard,
             makeSectionLabel("ต้นฉบับ"),
@@ -228,9 +283,8 @@ final class ViewController: UIViewController {
         contentStack.spacing = 14
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.setCustomSpacing(4, after: titleLabel)
-        contentStack.setCustomSpacing(20, after: subtitleLabel)
-        contentStack.setCustomSpacing(6, after: makeSectionLabel("ต้นฉบับ"))
-        contentStack.setCustomSpacing(6, after: makeSectionLabel("คำแปล"))
+        contentStack.setCustomSpacing(16, after: subtitleLabel)
+        contentStack.setCustomSpacing(16, after: broadcastHintCard)
         contentStack.setCustomSpacing(20, after: translatedTextView)
 
         scrollView.addSubview(contentStack)
@@ -269,12 +323,13 @@ final class ViewController: UIViewController {
         return label
     }
 
+    // MARK: — Setup
+
     private func setupOrchestrator() {
         orchestrator.delegate = self
     }
 
     private func setupPiP() {
-        // Pass the real view that lives in the window — required for PiP to start
         pipManager.setup(sourceView: view)
         pipManager.updateLanguage(from: selectedSource.code, to: selectedTarget.code)
         pipManager.onPiPActiveChange = { [weak self] active in
@@ -286,6 +341,8 @@ final class ViewController: UIViewController {
             }
         }
     }
+
+    // MARK: — Actions
 
     @objc private func toggleCapture() {
         if isRunning {
@@ -320,6 +377,8 @@ final class ViewController: UIViewController {
     }
 }
 
+// MARK: — Orchestrator delegate
+
 extension ViewController: TranslationOrchestratorDelegate {
     func orchestrator(_ orchestrator: TranslationOrchestrator, didUpdateOriginal text: String) {
         originalTextView.text = text
@@ -333,10 +392,9 @@ extension ViewController: TranslationOrchestratorDelegate {
     func orchestratorDidStart(_ orchestrator: TranslationOrchestrator) {
         isRunning = true
         updateStartButton(running: true)
-        statusLabel.text = "⬤  กำลังแปลเสียง..."
-        statusLabel.textColor = UIColor(red: 0.3, green: 1.0, blue: 0.5, alpha: 1)
+        statusLabel.text = "⬤  รอ Broadcast... เปิด Control Center แล้วเลือก \"TranslatorPiP\""
+        statusLabel.textColor = UIColor(red: 1.0, green: 0.85, blue: 0.4, alpha: 1)
         pipManager.setListening(true)
-        pipManager.startPiP()
     }
 
     func orchestratorDidStop(_ orchestrator: TranslationOrchestrator) {
